@@ -1,0 +1,285 @@
+---
+title: "Final Project - Step 3"
+author: "Melissa Young"
+date: "August 12, 2022"
+output: pdf_document
+---
+
+```{r, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+knitr::opts_knit$set(root.dir = 'C:/Users/mdyoung/OneDrive - Bankers Financial Corporation/Documents')
+```
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(outliers)
+library(lmtest)
+library(car)
+library(ggmap)
+library(usmap)
+library(data.table)
+library(pastecs)
+```
+
+```{r, include=FALSE}
+df_sales_original <- read_excel("Sales_Original.xlsx")
+df_claims_original <- read.csv("Claims_Original.csv")
+df_dealer_orignal <- read.csv("Dealers_Original.csv")
+```
+
+# Introduction 
+I currently work for a holding company with many subsidiaries.  My functions include finance manager, data warehousing and management as well as risk analysis and claims reserve projections on ultimate loss ratios.  Claims are the leading expense on an insuring business's profit statement outside of salaries and related.  Much emphasis is placed on predicting how a product will perform. This leads to evaluating the reasonableness of the warranty cost and claims experience to present loss reserves.  The subsidiary I will focus on for this project is a warranty group that specializes in servicing extended warranties on appliances (refrigerators, washers, dryers, stoves, small home appliances), TV's and other electronics (audio equipment, home wine coolers, portable air conditioners, mobile phones).  These products can have different warranty periods from 12 months to 5 years. The reason I am choosing this subsidiary is due to the fact that their operating income has fallen in the past couple of years.  Assumption is that this is due to an increase in claims experience since bringing on a large client.  This particular buying group (many dealers under the same contract) product mix consists 99% of refrigerators, washers, TV's and small home appliances.  
+
+# Data 
+
+**Data Set 1:** Sales\  
+
+**Source:** Internal system of record for warranty group\ 
+
+This data set contains all sales information for the last 5 years.  Including contract number, product sold, manufacturer, dealer name, warranty terms, sale date, warranty costs and retail costs. 
+**Data Set 2:** Claim\  
+
+**Source:** Internal system of record for warranty group\ 
+
+This data set contains all claims information for the last 5 years. Including contract number, loss date, payment date, total claim amount, parts amount, labor amount, servicing company. 
+ 
+**Data Set 3:** Dealers\  
+
+**Source:** Internal system of record for warranty group\ 
+
+This data set contains all dealer information for the largest buying group within the warranty companies book of busies.  Including dealer location and demographics.
+
+# The problem statement addressed
+The below questions will help address the main question of:  *How can we make dealers and products more profitable?* 
+
+1. Can a predictive model help project claims assumptions using historical data and trends? 
+2. Has there been in an increase in claims volume, or a decrease? 
+3. Are there regional concentrations of dealers that are performing under contract terms? 
+4. Can we pinpoint ill performing dealers with the model? 
+5. Are the claims increasing or decreasing in a certain product group? 
+6. Are the claims increasing or decreasing in relation to a certain product and manufacturer? 
+7. Is there sufficient reserves for future claims? 
+8. Are the warranty products priced correctly?
+
+# Approach
+Within the warranty business, the process of claims is approaching real time acceptance and denial. The certificate to replace a product, service a product and pay any associated costs with the claim needs to happen within a set time frame according to contract terms. Usually within 72 hours. An example within this project case with appliances would be to determine if the product is serviceable, start the process to get a tech out to the house.  If determined to be a total loss, send certificate for full replacement and any associated costs with that replacement such as food loss. I began with EDA on my data sets, determining if I have sufficient volume with 5 years of sales and claims historical.  I then calculated the ultimate loss ratio to determine if the premiums outweigh the loss projections. With this information I can then conduct a correlation exercise to determine what data point has the most impact on the ultimate loss ratio. These steps will lead to the regression analysis on how the products will perform in the future and whether the business model is sustainable.   
+
+# How your approach addresses (fully or partially) the problem. 
+The earnings pattern of the warranties sold should more than cover the cost to service the product over the life of the warranty. My approach will address many aspects of what determines to be a good profit margin (15% or greater) and an ultimate loss ratio of 73%.  I can not say it will be fully addressed as there may be factors outside of my approach that I can address in future project work. When complete, a recommendation can be given as to the areas that need to be addressed to improve the products performance within the pricing model, claims costs and cost sharing.
+
+# Analysis
+*All tables will show top 15 in group.* 
+
+The table below represents the total contract warranty sales by product description. 
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+df_sales <- df_sales_original %>%
+  separate(DealerNumber, into = c("Dealer Number", "Dealer Letter"), sep = " ") %>%
+  group_by(ProductDescription) %>%
+  summarize(`ContractCostAmount` = sum(`ContractCostAmount`)) %>%
+  arrange(desc(`ContractCostAmount`))
+  
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+knitr::kable(head(df_sales, 15), caption = "Total Sales by Product")
+```
+
+
+The table below represents the total claims incurred by product description. 
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+df_sales <- df_sales_original %>%
+  group_by(ProductDescription) %>%
+  summarize(`ClaimAmount` = sum(`ClaimAmount`)) %>%
+  arrange(desc(`ClaimAmount`))
+ 
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+knitr::kable(head(df_sales, 15), caption = "Total Claims by Product")
+```
+
+Summarizing the claims and premium totals by year sold below, shows there has been an increase year over year.  Per the claim data, most are incurred within years 2 and 3 of the contract term.   
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+df_summary_product_description <- df_sales_original %>%
+  group_by(Year) %>%
+  summarise(`ClaimAmount` = sum(`ClaimAmount`), `ContractCostAmount` = sum(`ContractCostAmount`)) %>%
+  arrange(desc(`Year`))
+
+knitr::kable(df_summary_product_description, caption = "Total by Year")
+
+```
+
+
+Summarize by the Product Description and calculate loss ratio.  Created new variable, Loss Ratio, which tells us the likelihood of a loss happening on a product:  Refrigerator = LR of 0.1954, loss will happen at least 20% of the time within the first 3 years of the gross written premium.  This will only increase with calculating on earned premium, which is the contract cost earned over the contract term.  Typically a factor of 5x. You want to see a gross loss ratio around .15 or lower.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+df_summary_product_description <- df_sales_original %>%
+  group_by(ProductDescription) %>%
+  summarise(`ContractCostAmount` = sum(`ContractCostAmount`), `ClaimAmount` = sum(`ClaimAmount`)) %>%
+  mutate(LossRatio = `ClaimAmount`/`ContractCostAmount`) %>%
+  arrange(desc(`ContractCostAmount`))
+  
+knitr::kable(head(df_summary_product_description, 15, caption = "Loss Ratio by Product"))
+
+```
+
+
+Summarizing the claims and premium totals by the Dealer. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+df_summary_product_description <- df_sales_original %>%
+  group_by(DealerName) %>%
+  summarise(`ClaimAmount` = sum(`ClaimAmount`), `ContractCostAmount` = sum(`ContractCostAmount`)) %>%
+  mutate(LossRatio = `ClaimAmount`/`ContractCostAmount`) %>%
+  arrange(desc(`ContractCostAmount`))
+
+knitr::kable(head(df_summary_product_description,15), caption = "Total by Dealer")
+
+```
+
+Summarize by the manufacturer. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+df_summary_product_description <- df_sales_original %>%
+  group_by(ManufacturerDescription) %>%
+  summarise(`ContractCostAmount` = sum(`ContractCostAmount`), `ClaimAmount` = sum(`ClaimAmount`)) %>%
+  mutate(LossRatio = `ClaimAmount`/`ContractCostAmount`) %>%
+  arrange(desc(`ContractCostAmount`))
+  
+knitr::kable(head(df_summary_product_description, 15, caption = "Loss Ratio by Manufacturer"))
+
+```
+
+Summarize by the model. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+df_summary_product_description <- df_sales_original %>%
+  group_by(ModelNumber, ManufacturerDescription, ProductDescription) %>%
+  summarise(`ContractCostAmount` = sum(`ContractCostAmount`), `ClaimAmount` = sum(`ClaimAmount`)) %>%
+  mutate(LossRatio = `ClaimAmount`/`ContractCostAmount`) %>%
+  arrange(desc(`ClaimAmount`))
+  
+knitr::kable(head(df_summary_product_description, 15, caption = "Loss Ratio by Model"))
+
+```
+
+Summarize by the state.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+df_summary_product_description <- df_sales_original %>%
+  group_by(StateCode) %>%
+  summarise(`ClaimAmount` = sum(`ClaimAmount`), `ContractCostAmount` = sum(`ContractCostAmount`)) %>%
+  mutate(LossRatio = `ClaimAmount`/`ContractCostAmount`) %>%
+  arrange(desc(`ContractCostAmount`))
+ 
+knitr::kable(head(df_summary_product_description, 15, caption = "Totals by State"))
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+dat <- data.frame(state = c("CA", "FL", "MD", "WA", "OR", "WI", "VA", "LA", "TX", "NY", "OH", "AL", "MI", "NE", "MO", "IL","IA", "AR", "IN", "PA", "NM", "TN", "AZ", "OK", "MN", "DC", "HI", "KY", "ID", "WV", "KS", "GA", "MT", "NC", "AK", "SC", "MS", "UT", "CO", "NJ", "ND", "WY", "NV", "MA", "ME", "SD", "DE", "VT", "CT", "NH", "PE"), Premium = c(7354, 4755, 2551, 2553, 2767, 2473, 1887, 2028, 1298, 1383, 1135, 1314, 1138, 973, 1198, 769, 760, 973, 758, 726, 728, 554, 310, 372, 375, 275, 284, 293, 232, 174, 151, 152, 159, 178, 156, 117, 73, 55, 53, 74,28, 47, 30, 26, 10, 16, 3, 7, 8, 5, 3 ))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+plot_usmap(data = dat,  values = "Premium", color = "black") +
+             scale_fill_continuous(  
+               low = "white", high = "green", name = "Premium Totals in Thousands", label = scales::comma
+  ) + theme(legend.position = "right")
+               
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+dat <- data.frame(state = c("CA", "FL", "MD", "WA", "OR", "WI", "VA", "LA", "TX", "NY", "OH", "AL", "MI", "NE", "MO", "IL","IA", "AR", "IN", "PA", "NM", "TN", "AZ", "OK", "MN", "DC", "HI", "KY", "ID", "WV", "KS", "GA", "MT", "NC", "AK", "SC", "MS", "UT", "CO", "NJ", "ND", "WY", "NV", "MA", "ME", "SD", "DE", "VT", "CT", "NH", "PE" ), Premium = c(842, 824, 476, 430, 401, 360, 339, 322, 201, 191, 188, 164, 155, 151, 142, 127, 126, 116, 105, 98, 92, 78, 59, 58, 55, 52, 45, 42, 30, 28, 26, 25 ,25, 19, 16, 10, 9, 8, 7, 6, 5, 5, 5, 3, 2, 1, .5, .5, .5, .3, .2 ))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+plot_usmap(data = dat,  values = "Premium", color = "black") +
+             scale_fill_continuous(  
+               low = "white", high = "red", name = "Claims Totals in Thousands", label = scales::comma
+  ) + theme(legend.position = "right")
+               
+```
+
+
+```{r, include=FALSE, warning=FALSE, message=FALSE}
+df_summary_product_description <- df_sales_original %>%
+  group_by(ProductDescription) %>%
+  summarise(`ContractCostAmount` = sum(`ContractCostAmount`), `ClaimAmount` = sum(`ClaimAmount`)) %>%
+  mutate(LossRatio = `ClaimAmount`/`ContractCostAmount`) %>%
+  arrange(desc(`ContractCostAmount`))
+  
+knitr::kable(head(df_summary_product_description, caption = "Loss Ratio by Product"))
+```
+
+```{r, include=FALSE, warning=FALSE, message=FALSE}
+df_summary_product_description %>%
+  ggplot(aes(LossRatio)) + geom_histogram()
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+df_summary_product_description %>%
+  ggplot(aes(x = LossRatio, y = ProductDescription)) + geom_bar(aes(), stat = "identity", postion = "dodge") + ggtitle("Loss Ratio by Product") + theme(axis.text=element_text(size=6.5),
+        axis.title=element_text(size=14,face="bold"))
+```
+
+
+Below is the linear regression model for loss ratio.
+
+```{r, echo=FALSE}
+lossratio_lm <- lm(`ClaimAmount` ~ `ContractCostAmount`, data = df_summary_product_description)
+summary(lossratio_lm)
+```
+
+```{r, echo=FALSE}
+lossratio_predict <- data.frame(ClaimAmount = predict(lossratio_lm, df_summary_product_description), ContractCostAmount=df_summary_product_description$ContractCostAmount )
+```
+
+```{r, echo=FALSE}
+ggplot(data = df_summary_product_description, aes(y = `ClaimAmount`, x = `ContractCostAmount`)) + 
+  geom_point(color = "blue") +
+  geom_line(color = "red", data = lossratio_predict, aes(y = `ClaimAmount`, x = `ContractCostAmount`))
+
+mean_lossratio <- mean(df_summary_product_description$ClaimAmount)
+```
+
+
+
+# Implications
+| Product          | Net Adjusted Premium  | Paid Losses | Future Claim Liability | Ultimate Losses| Ultimate Loss Ratio |
+|------------------|-----------------------|-------------|------------------------|----------------|---------------------:
+| Refrigerators    | $13,027,882           | $1,025,254  | $11,777,503            | $12,802,756    |   98.3%             |
+| Washers          | $6,552,717            | $463,709    | $4,942,869             | $5,406,578     |   82.5%             |
+| Other Appliances | $14,911,779           | $836,660    | $9,090,615             | $9,927,275     |   66.7%             |
+| Television       | $495,786              | $70,009     | $335,904               | $405,912       |   81.9%             |
+|------------------|-----------------------|-------------|------------------------|----------------|---------------------|
+| Total            | $34,988,163           | $2,395,632  | $26,146,890            | $28,542,521    |   81.6%             |
+
+We can see here from the summary table above that the Ultimate Loss Ratio is above the target 73% for the book of business. The formula = Ultimate Losses/Net Adjusted Premium = Ultimate Loss Ratio.
+
+There are several further investigations to determine next steps but we can conclude:  
+
+1. Refrigerators are number one in all categories:  total premium sold, total claims and loss ratio. Followed by washers, number 2 in sales and number 3 in loss ratio. These 2 products make up more than 50% of the top 15 product groups in terms of number sold, premium collected and losses incurred.   
+2. Whirlpool and Frigidaire are the lowest performing manufacturers in these product groups.   
+3. Bray & Scarff followed by Good Deals are lowest performing dealers in the top 15.   
+4. Sales and claims concentration fall in 2 states, CA followed by FL.   
+5. The product retail price correlates to the loss amount incurred, meaning the higher the price of the item, the higher the loss claim amount is.    
+
+
+# Limitations
+There were a few limitations on how the overall operating income performance is scored.  The largest being, I did not have access to the overhead expenses on servicing these dealers and products.  Assumption is, as long as the Ultimate Loss Ratio remains at or below 73%, the company will be profitable. This is a big assumption as salaries and related is the second largest expense for this business model outside of losses. 
+
+
+# Concluding Remarks 
+After reviewing all the data and performing the analysis above, the buying group in question is performing below the contractual expectation.  The next steps will be to take a deeper dive into the lowest performing dealers and their product mix to either drop coverage on certain manufacturers products or instill loss sharing within the contract per dealer.  Where if their ultimate loss ratio goes above a certain threshold, such as 73%, they will share the cost of those claims. As well as review the pricing models to ensure the warranty premium is adjusting with current inflation models. 
+
+
+
+
