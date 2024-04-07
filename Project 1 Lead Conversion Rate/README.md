@@ -14,7 +14,7 @@ Our analytical process unfolds across several Jupyter Notebooks, each serving a 
 •	Conversion Rate Analysis:  zeroes in on analyzing the conversion rates, identifying the chinks in the armor where leads fall through, and pinpointing opportunities for optimization.
 
 Results and Insights
-The culmination of our analytical journey, results.ipynb, encapsulates the core findings, providing a lucid understanding of:
+The culmination of our analytical journey encapsulates the core findings, providing a lucid understanding of:
 •	Overall conversion rates and their fluctuations over time.
 •	Patterns and commonalities among non-converting leads.
 •	Strategic recommendations aimed at bolstering lead conversion rates based on data-driven insights.
